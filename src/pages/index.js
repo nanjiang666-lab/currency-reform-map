@@ -6,7 +6,6 @@ export default function Home() {
   const { data: session } = useSession();
   const mapContainer = useRef(null);
 
-  // 全局 state
   const [year, setYear] = useState(2025);
   const [country, setCountry] = useState(null);
   const [countryList, setCountryList] = useState([]);
@@ -17,26 +16,6 @@ export default function Home() {
     file: null
   });
 
-  // 1. 加载国家列表
-  useEffect(() => {
-    async function loadCountries() {
-      try {
-        const res = await fetch(
-          'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
-        );
-        const data = await res.json();
-        const names = data.features
-          .map((f) => f.properties.ADMIN)
-          .sort((a, b) => a.localeCompare(b));
-        setCountryList(names);
-      } catch (err) {
-        console.error('加载国家列表失败', err);
-      }
-    }
-    loadCountries();
-  }, []);
-
-  // 2. 初始化 Mapbox 地图及交互
   useEffect(() => {
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
@@ -47,36 +26,35 @@ export default function Home() {
     });
 
     map.on('load', () => {
+      // 1. 添加 GeoJSON 源和图层
       map.addSource('countries', {
         type: 'geojson',
         data:
           'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
       });
-
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
         source: 'countries',
-        paint: {
-          'fill-color': '#627BC1',
-          'fill-opacity': 0.7
-        }
+        paint: { 'fill-color': '#627BC1', 'fill-opacity': 0.7 }
       });
-
       map.addLayer({
         id: 'countries-line',
         type: 'line',
         source: 'countries',
-        paint: {
-          'line-color': '#ffffff',
-          'line-width': 0.5
-        }
+        paint: { 'line-color': '#fff', 'line-width': 0.5 }
       });
 
-      // 点击国家面弹出编辑
+      // 2. 从数据源里提取所有国家名，排序后去重
+      const features = map.querySourceFeatures('countries');
+      const names = Array.from(
+        new Set(features.map((f) => f.properties.ADMIN))
+      ).sort((a, b) => a.localeCompare(b));
+      setCountryList(names);
+
+      // 3. 点击事件：点击哪一块面，就把对应国家设为 active
       map.on('click', 'countries-fill', (e) => {
-        const clicked = e.features[0].properties.ADMIN;
-        setCountry(clicked);
+        setCountry(e.features[0].properties.ADMIN);
       });
       map.on('mouseenter', 'countries-fill', () => {
         map.getCanvas().style.cursor = 'pointer';
@@ -89,7 +67,6 @@ export default function Home() {
     return () => map.remove();
   }, []);
 
-  // 3. 保存编辑
   const handleSave = async () => {
     let fileUrl = '';
     if (form.file) {
@@ -128,10 +105,7 @@ export default function Home() {
         {session?.user ? (
           <>
             已登录：{session.user.email}
-            <button
-              onClick={() => signOut()}
-              style={{ marginLeft: 8 }}
-            >
+            <button onClick={() => signOut()} style={{ marginLeft: 8 }}>
               登出
             </button>
           </>
@@ -174,6 +148,7 @@ export default function Home() {
                   }
                 >
                   <option value="">请选择</option>
+                  {/* …20 种类型 … */}
                   <option>New Currency</option>
                   <option>Redenomination</option>
                   <option>Decimalization</option>
