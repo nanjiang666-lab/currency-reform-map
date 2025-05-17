@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import countriesData from '../../public/countries.geojson';
 
 export default function Home() {
   const { data: session } = useSession();
