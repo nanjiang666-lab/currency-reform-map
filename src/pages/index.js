@@ -1,31 +1,70 @@
+// src/pages/index.js
 import { useState, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useSession, signIn, signOut } from 'next-auth/react';
 
+const GEO_URL =
+  'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
+
+// 20 种类型对应的颜色映射
+const colorPalette = {
+  'New Currency': '#e6194b',
+  Redenomination: '#3cb44b',
+  Decimalization: '#ffe119',
+  Devaluation: '#4363d8',
+  Revaluation: '#f58231',
+  'Join Euro': '#911eb4',
+  'Leave Euro': '#46f0f0',
+  Dollarization: '#f032e6',
+  'De-Dollarization': '#bcf60c',
+  'Peg Change': '#fabebe',
+  'Currency Board': '#008080',
+  'Monetary Union': '#e6beff',
+  'Exit Union': '#9a6324',
+  'Gold Standard': '#fffac8',
+  'Abandon Gold': '#800000',
+  'Banknotes Redesign': '#aaffc3',
+  'Exchange Regime Change': '#808000',
+  Cryptocurrency: '#ffd8b1',
+  'Institution Reform': '#000075',
+  Other: '#808080'
+};
+
 export default function Home() {
   const { data: session } = useSession();
+  const mapRef = useRef(null);
   const mapContainer = useRef(null);
 
   const [year, setYear] = useState(2025);
-  const [countryCode, setCountryCode] = useState(''); // ISO3 code
-  const [countryList, setCountryList] = useState([]); // [{name, cca3}]
+  const [geo, setGeo] = useState(null);
+  const [countryList, setCountryList] = useState([]);
+  const [countryCode, setCountryCode] = useState('');
   const [form, setForm] = useState({ type: '', title: '', desc: '', file: null });
 
-  // 1. 拉取国家列表 (Rest Countries)
+  // 1. 拉取 GeoJSON 并提取国家列表
   useEffect(() => {
-    fetch('https://restcountries.com/v3.1/all?fields=name,cca3')
+    fetch(GEO_URL)
       .then((r) => r.json())
       .then((data) => {
-        const list = data
-          .map((c) => ({ name: c.name.common, code: c.cca3 }))
+        // 添加默认 color
+        data.features.forEach((f) => {
+          f.properties.color = '#ccc';
+        });
+        setGeo(data);
+        const list = data.features
+          .map((f) => ({
+            name: f.properties.ADMIN,
+            code: f.properties.ISO_A3
+          }))
           .sort((a, b) => a.name.localeCompare(b.name));
         setCountryList(list);
       })
       .catch(console.error);
   }, []);
 
-  // 2. 初始化 Mapbox 矢量瓦片源
+  // 2. 初始化 Mapbox
   useEffect(() => {
+    if (!geo) return;
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
       container: mapContainer.current,
@@ -33,37 +72,29 @@ export default function Home() {
       center: [0, 20],
       zoom: 1.5
     });
+    mapRef.current = map;
 
     map.on('load', () => {
-      map.addSource('countries', {
-        type: 'vector',
-        url: 'mapbox://mapbox.country-boundaries-v1'
-      });
-
+      map.addSource('countries', { type: 'geojson', data: geo });
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
         source: 'countries',
-        'source-layer': 'country_boundaries',
         paint: {
-          'fill-color': '#627BC1',
-          'fill-opacity': 0.6
+          'fill-color': ['get', 'color'],
+          'fill-opacity': 0.7
         }
       });
-
       map.addLayer({
         id: 'countries-line',
         type: 'line',
         source: 'countries',
-        'source-layer': 'country_boundaries',
-        paint: { 'line-color': '#ffffff', 'line-width': 0.5 }
+        paint: { 'line-color': '#fff', 'line-width': 0.5 }
       });
 
-      // 点击某国：取 iso_3166_1_alpha_3 属性
       map.on('click', 'countries-fill', (e) => {
-        setCountryCode(e.features[0].properties.iso_3166_1_alpha_3);
+        setCountryCode(e.features[0].properties.ISO_A3);
       });
-
       map.on('mouseenter', 'countries-fill', () => {
         map.getCanvas().style.cursor = 'pointer';
       });
@@ -73,10 +104,14 @@ export default function Home() {
     });
 
     return () => map.remove();
-  }, []);
+  }, [geo]);
 
-  // 3. 保存事件
+  // 3. 保存事件，并更新地图颜色
   const handleSave = async () => {
+    if (!countryCode || !form.type) {
+      alert('请选择类型再保存');
+      return;
+    }
     let fileUrl = '';
     if (form.file) {
       const res = await fetch(
@@ -85,6 +120,7 @@ export default function Home() {
       );
       fileUrl = (await res.json()).url;
     }
+    // 发送到后端
     await fetch('/api/save-event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -96,38 +132,37 @@ export default function Home() {
       })
     });
     alert('保存成功');
+
+    // 立即在地图上更新颜色
+    const map = mapRef.current;
+    const source = map.getSource('countries');
+    const data = source._data; // GeoJSON object
+    data.features.forEach((f) => {
+      if (f.properties.ISO_A3 === countryCode) {
+        f.properties.color = colorPalette[form.type];
+      }
+    });
+    source.setData(data);
+
+    // 关闭面板
     setCountryCode('');
     setForm({ type: '', title: '', desc: '', file: null });
   };
 
-  // 找到当前选中国家的名字
-  const selectedCountryName =
-    countryList.find((c) => c.code === countryCode)?.name || '';
+  const selectedCountry = countryList.find((c) => c.code === countryCode);
 
   return (
     <div>
       {/* 地图容器 */}
       <div ref={mapContainer} id="map" />
 
-      {/* 下拉国家列表 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 10,
-          left: 10,
-          background: 'rgba(255,255,255,0.9)',
-          padding: '8px',
-          borderRadius: 4,
-          zIndex: 20,
-          fontFamily: 'sans-serif'
-        }}
-      >
+      {/* 国家下拉菜单 */}
+      <div className="selector">
         <label>
           国家列表：
           <select
             value={countryCode}
             onChange={(e) => setCountryCode(e.target.value)}
-            style={{ marginLeft: 8, minWidth: 160 }}
           >
             <option value="">—— 请选择 ——</option>
             {countryList.map((c) => (
@@ -139,23 +174,9 @@ export default function Home() {
         </label>
       </div>
 
-      {/* 登录/登出 */}
-      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
-        {session?.user ? (
-          <>
-            已登录：{session.user.email}
-            <button onClick={() => signOut()} style={{ marginLeft: 8 }}>
-              登出
-            </button>
-          </>
-        ) : (
-          <button onClick={() => signIn()}>管理员登录</button>
-        )}
-      </div>
-
       {/* 时间轴滑块 */}
       <div className="map-overlay">
-        年份：{year < 0 ? `前${-year}` : year}
+        年份：{year}
         <input
           type="range"
           min={-2000}
@@ -166,13 +187,25 @@ export default function Home() {
         />
       </div>
 
+      {/* 登录/登出 */}
+      <div className="auth">
+        {session?.user ? (
+          <>
+            已登录：{session.user.email}{' '}
+            <button onClick={() => signOut()}>登出</button>
+          </>
+        ) : (
+          <button onClick={() => signIn()}>管理员登录</button>
+        )}
+      </div>
+
       {/* 编辑面板 */}
       {countryCode && (
         <div className="panel">
           <h3>
-            {selectedCountryName} — {year < 0 ? `前${-year}` : year}
+            {selectedCountry?.name} — {year}
           </h3>
-          {session?.user?.email === process.env.ADMIN_EMAIL ? (
+          {session?.user ? (
             <>
               <label>
                 类型：
@@ -183,29 +216,11 @@ export default function Home() {
                   }
                 >
                   <option value="">请选择</option>
-                  <option>New Currency</option>
-                  <option>Redenomination</option>
-                  <option>Decimalization</option>
-                  <option>Devaluation</option>
-                  <option>Revaluation</option>
-                  <option>Join Euro</option>
-                  <option>Leave Euro</option>
-                  <option>Dollarization</option>
-                  <option>De-Dollarization</option>
-                  <option>Peg Change</option>
-                  <option>Currency Board</option>
-                  <option>Monetary Union</option>
-                  <option>Exit Union</option>
-                  <option>Gold Standard</option>
-                  <option>Abandon Gold</option>
-                  <option>Banknotes Redesign</option>
-                  <option>Exchange Regime Change</option>
-                  <option>Cryptocurrency</option>
-                  <option>Institution Reform</option>
-                  <option>Other</option>
+                  {Object.keys(colorPalette).map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
                 </select>
               </label>
-
               <label>
                 标题：
                 <input
@@ -216,20 +231,18 @@ export default function Home() {
                   }
                 />
               </label>
-
               <label>
                 描述：
                 <textarea
-                  rows={4}
+                  rows={3}
                   value={form.desc}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, desc: e.target.value }))
                   }
                 />
               </label>
-
               <label>
-                上传图片/文档：
+                文件：
                 <input
                   type="file"
                   accept=".png,.doc,.docx"
@@ -238,7 +251,6 @@ export default function Home() {
                   }
                 />
               </label>
-
               <button onClick={handleSave}>保存</button>
             </>
           ) : (
