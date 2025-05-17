@@ -1,3 +1,5 @@
+// src/pages/index.js
+
 import { useState, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useSession, signIn, signOut } from 'next-auth/react';
@@ -8,7 +10,7 @@ export default function Home() {
 
   const [year, setYear] = useState(2025);
   const [countryCode, setCountryCode] = useState(''); // ISO3 code
-  const [countryList, setCountryList] = useState([]); // [{name, cca3}]
+  const [countryList, setCountryList] = useState([]); // [{name, code}]
   const [form, setForm] = useState({ type: '', title: '', desc: '', file: null });
 
   // 1. 拉取国家列表 (Rest Countries)
@@ -59,11 +61,9 @@ export default function Home() {
         paint: { 'line-color': '#ffffff', 'line-width': 0.5 }
       });
 
-      // 点击某国：取 iso_3166_1_alpha_3 属性
       map.on('click', 'countries-fill', (e) => {
         setCountryCode(e.features[0].properties.iso_3166_1_alpha_3);
       });
-
       map.on('mouseenter', 'countries-fill', () => {
         map.getCanvas().style.cursor = 'pointer';
       });
@@ -77,25 +77,41 @@ export default function Home() {
 
   // 3. 保存事件
   const handleSave = async () => {
+    if (!form.type) {
+      alert('请选择类型后再保存');
+      return;
+    }
+    // 上传文件（可选）
     let fileUrl = '';
     if (form.file) {
-      const res = await fetch(
+      const uploadRes = await fetch(
         `/api/upload?filename=${encodeURIComponent(form.file.name)}`,
         { method: 'POST', body: form.file }
       );
-      fileUrl = (await res.json()).url;
+      const uploadJson = await uploadRes.json();
+      fileUrl = uploadJson.url;
     }
-    await fetch('/api/save-event', {
+    // 调用保存接口，并携带登录 Cookie
+    const resp = await fetch('/api/save-event', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         countryCode,
         year,
-        ...form,
+        type: form.type,
+        title: form.title,
+        desc: form.desc,
         fileUrl
       })
     });
+    if (!resp.ok) {
+      const err = await resp.json();
+      alert('保存失败：' + (err.error || resp.statusText));
+      return;
+    }
     alert('保存成功');
+    // 重置状态
     setCountryCode('');
     setForm({ type: '', title: '', desc: '', file: null });
   };
@@ -172,7 +188,7 @@ export default function Home() {
           <h3>
             {selectedCountryName} — {year < 0 ? `前${-year}` : year}
           </h3>
-          {session?.user?.email === process.env.ADMIN_EMAIL ? (
+          {session?.user ? (
             <>
               <label>
                 类型：
@@ -239,6 +255,7 @@ export default function Home() {
                 />
               </label>
 
+              {/* 保存按钮调用 handleSave */}
               <button onClick={handleSave}>保存</button>
             </>
           ) : (
