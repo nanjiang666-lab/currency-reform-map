@@ -1,15 +1,47 @@
-import { getServerSession } from 'next-auth/next';
-import authOptions from './auth/[...nextauth]';
+import fs from 'fs';
+import path from 'path';
+import { getToken } from 'next-auth/jwt';
 
-export default async function handler(req,res){
-  const session = await getServerSession(req,res,authOptions);
-  if(!session||session.user.email!==process.env.ADMIN_EMAIL){
-    return res.status(401).json({error:'Unauthorized'});
+const EVENTS_FILE = path.join(process.cwd(), 'events.json');
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
-  if(req.method==='POST'){
-    console.log('事件数据：',req.body);
-    return res.status(200).json({success:true});
+
+  // 验证登录
+  const token = await getToken({ req, secret: NEXTAUTH_SECRET });
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
-  res.status(405).end();
+
+  // 读取现有 events.json
+  let events = [];
+  try {
+    const raw = fs.readFileSync(EVENTS_FILE, 'utf-8');
+    events = JSON.parse(raw);
+  } catch (e) {
+    events = [];
+  }
+
+  // 新事件对象
+  const { countryCode, year, type, title, desc, fileUrl } = req.body;
+  const newEvent = {
+    countryCode,
+    year,
+    type,
+    title,
+    desc,
+    fileUrl: fileUrl || '',
+    savedBy: token.email,
+    timestamp: new Date().toISOString(),
+  };
+
+  // 追加并写回文件
+  events.push(newEvent);
+  fs.writeFileSync(EVENTS_FILE, JSON.stringify(events, null, 2), 'utf-8');
+
+  return res.status(200).json({ ok: true });
 }
-
