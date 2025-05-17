@@ -1,3 +1,5 @@
+// pages/api/save-event.js
+
 import fs from 'fs';
 import path from 'path';
 import { getToken } from 'next-auth/jwt';
@@ -11,22 +13,21 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  // 验证登录
+  // 验证用户已登录
   const token = await getToken({ req, secret: NEXTAUTH_SECRET });
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // 读取现有 events.json
+  // 读取已有事件
   let events = [];
   try {
-    const raw = fs.readFileSync(EVENTS_FILE, 'utf-8');
-    events = JSON.parse(raw);
+    events = JSON.parse(fs.readFileSync(EVENTS_FILE, 'utf-8'));
   } catch (e) {
     events = [];
   }
 
-  // 新事件对象
+  // 构造新事件
   const { countryCode, year, type, title, desc, fileUrl } = req.body;
   const newEvent = {
     countryCode,
@@ -36,10 +37,10 @@ export default async function handler(req, res) {
     desc,
     fileUrl: fileUrl || '',
     savedBy: token.email,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString()
   };
 
-  // 追加并写回文件
+  // 写入并保存
   events.push(newEvent);
   fs.writeFileSync(EVENTS_FILE, JSON.stringify(events, null, 2), 'utf-8');
 
