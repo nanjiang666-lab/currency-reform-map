@@ -6,10 +6,10 @@ export default function Home() {
   const { data: session } = useSession();
   const mapContainer = useRef(null);
 
+  // 全局 state
   const [year, setYear] = useState(2025);
   const [country, setCountry] = useState(null);
   const [countryList, setCountryList] = useState([]);
-
   const [form, setForm] = useState({
     type: '',
     title: '',
@@ -17,7 +17,26 @@ export default function Home() {
     file: null
   });
 
-  // 初始化地图
+  // 1. 加载国家列表
+  useEffect(() => {
+    async function loadCountries() {
+      try {
+        const res = await fetch(
+          'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+        );
+        const data = await res.json();
+        const names = data.features
+          .map((f) => f.properties.ADMIN)
+          .sort((a, b) => a.localeCompare(b));
+        setCountryList(names);
+      } catch (err) {
+        console.error('加载国家列表失败', err);
+      }
+    }
+    loadCountries();
+  }, []);
+
+  // 2. 初始化 Mapbox 地图及交互
   useEffect(() => {
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
@@ -28,25 +47,12 @@ export default function Home() {
     });
 
     map.on('load', () => {
-      // 在 map.on('load', …) 的末尾，加入：
-map.once('idle', () => {
-  // 拿到当前视野下所有 'countries-fill' 图层 feature
-  const features = map.queryRenderedFeatures({ layers: ['countries-fill'] });
-  // 去重、按拼音排序
-  const names = Array.from(new Set(
-    features.map(f => f.properties.ADMIN)
-  )).sort((a, b) => a.localeCompare(b));
-  setCountryList(names);
-});
-
-      // 加载 GeoJSON
       map.addSource('countries', {
         type: 'geojson',
         data:
           'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
       });
 
-      // 添加填充层
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
@@ -57,7 +63,6 @@ map.once('idle', () => {
         }
       });
 
-      // 添加描边层
       map.addLayer({
         id: 'countries-line',
         type: 'line',
@@ -68,7 +73,7 @@ map.once('idle', () => {
         }
       });
 
-      // 点击国家面
+      // 点击国家面弹出编辑
       map.on('click', 'countries-fill', (e) => {
         const clicked = e.features[0].properties.ADMIN;
         setCountry(clicked);
@@ -84,7 +89,7 @@ map.once('idle', () => {
     return () => map.remove();
   }, []);
 
-  // 保存编辑
+  // 3. 保存编辑
   const handleSave = async () => {
     let fileUrl = '';
     if (form.file) {
@@ -106,7 +111,7 @@ map.once('idle', () => {
 
   return (
     <div>
-      {/* 国家列表侧边栏 */}
+      {/* 侧边栏：国家列表 */}
       <div className="sidebar">
         <h3>国家列表</h3>
         <ul>
@@ -123,7 +128,10 @@ map.once('idle', () => {
         {session?.user ? (
           <>
             已登录：{session.user.email}
-            <button onClick={() => signOut()} style={{ marginLeft: 8 }}>
+            <button
+              onClick={() => signOut()}
+              style={{ marginLeft: 8 }}
+            >
               登出
             </button>
           </>
