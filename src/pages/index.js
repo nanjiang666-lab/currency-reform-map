@@ -9,8 +9,9 @@ export default function Home() {
   const { data: session } = useSession();
   const mapContainer = useRef(null);
 
+  // 全局 State
   const [year, setYear] = useState(2025);
-  const [country, setCountry] = useState(null);
+  const [country, setCountry] = useState('');
   const [countriesGeo, setCountriesGeo] = useState(null);
   const [countryList, setCountryList] = useState([]);
   const [form, setForm] = useState({
@@ -20,25 +21,24 @@ export default function Home() {
     file: null
   });
 
-  // 1. 预先 fetch GeoJSON 并提取国家名单
+  // 1. 预先拉取 GeoJSON 并提取国家列表
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch(GEO_URL);
         const data = await res.json();
         setCountriesGeo(data);
-        setCountryList(
-          data.features
-            .map((f) => f.properties.ADMIN)
-            .sort((a, b) => a.localeCompare(b))
-        );
+        const names = data.features
+          .map((f) => f.properties.ADMIN)
+          .sort((a, b) => a.localeCompare(b));
+        setCountryList(names);
       } catch (e) {
         console.error('加载国家 GeoJSON 失败', e);
       }
     })();
   }, []);
 
-  // 2. GeoJSON 加载后初始化地图
+  // 2. GeoJSON 加载后初始化 Mapbox 地图
   useEffect(() => {
     if (!countriesGeo) return;
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -51,12 +51,14 @@ export default function Home() {
 
     map.on('load', () => {
       map.addSource('countries', { type: 'geojson', data: countriesGeo });
+
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
         source: 'countries',
         paint: { 'fill-color': '#627BC1', 'fill-opacity': 0.7 }
       });
+
       map.addLayer({
         id: 'countries-line',
         type: 'line',
@@ -64,21 +66,22 @@ export default function Home() {
         paint: { 'line-color': '#fff', 'line-width': 0.5 }
       });
 
-      map.on('click', 'countries-fill', (e) =>
-        setCountry(e.features[0].properties.ADMIN)
-      );
-      map.on('mouseenter', 'countries-fill', () =>
-        (map.getCanvas().style.cursor = 'pointer')
-      );
-      map.on('mouseleave', 'countries-fill', () =>
-        (map.getCanvas().style.cursor = '')
-      );
+      // 点击国家面弹出编辑
+      map.on('click', 'countries-fill', (e) => {
+        setCountry(e.features[0].properties.ADMIN);
+      });
+      map.on('mouseenter', 'countries-fill', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'countries-fill', () => {
+        map.getCanvas().style.cursor = '';
+      });
     });
 
     return () => map.remove();
   }, [countriesGeo]);
 
-  // 3. 保存
+  // 3. 保存编辑
   const handleSave = async () => {
     let fileUrl = '';
     if (form.file) {
@@ -95,28 +98,47 @@ export default function Home() {
       body: JSON.stringify({ country, year, ...form, fileUrl })
     });
     alert('保存成功');
-    setCountry(null);
+    setCountry('');
+    setForm({ type: '', title: '', desc: '', file: null });
   };
 
   return (
     <div>
-      {/* 1. 地图容器 放最前面 */}
+      {/* 地图容器 —— 在最底层 */}
       <div ref={mapContainer} id="map" />
 
-      {/* 2. 侧边栏：国家列表 */}
-      <div className="sidebar">
-        <h3>国家列表</h3>
-        <ul>
-          {countryList.map((name) => (
-            <li key={name}>
-              <button onClick={() => setCountry(name)}>{name}</button>
-            </li>
-          ))}
-        </ul>
+      {/* 国家下拉选择 —— 顶层遮罩 */}
+      <div
+        className="selector"
+        style={{
+          position: 'absolute',
+          top: 10,
+          left: 10,
+          background: 'rgba(255,255,255,0.9)',
+          padding: '8px',
+          zIndex: 20,
+          fontFamily: 'sans-serif'
+        }}
+      >
+        <label>
+          国家列表：
+          <select
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            style={{ marginLeft: '8px', minWidth: '150px' }}
+          >
+            <option value="">—— 请选择 ——</option>
+            {countryList.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {/* 3. 登录/登出 */}
-      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 30 }}>
+      {/* 登录/登出 */}
+      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
         {session?.user ? (
           <>
             已登录：{session.user.email}
@@ -129,7 +151,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* 4. 时间轴滑块 */}
+      {/* 时间轴滑块 */}
       <div className="map-overlay">
         年份：{year < 0 ? `前${-year}` : year}
         <input
@@ -142,12 +164,13 @@ export default function Home() {
         />
       </div>
 
-      {/* 5. 编辑面板 */}
+      {/* 编辑面板 */}
       {country && (
         <div className="panel">
           <h3>
             {country} — {year < 0 ? `前${-year}` : year}
           </h3>
+
           {session?.user?.email === process.env.ADMIN_EMAIL ? (
             <>
               <label>
@@ -181,6 +204,7 @@ export default function Home() {
                   <option>Other</option>
                 </select>
               </label>
+
               <label>
                 标题：
                 <input
@@ -191,8 +215,9 @@ export default function Home() {
                   }
                 />
               </label>
+
               <label>
-                报告描述：
+                描述：
                 <textarea
                   rows={4}
                   value={form.desc}
@@ -201,6 +226,7 @@ export default function Home() {
                   }
                 />
               </label>
+
               <label>
                 上传图片/文档：
                 <input
@@ -211,12 +237,13 @@ export default function Home() {
                   }
                 />
               </label>
+
               <button onClick={handleSave}>保存</button>
             </>
           ) : (
             <p>只有管理员可编辑。</p>
           )}
-          <button onClick={() => setCountry(null)}>关闭</button>
+          <button onClick={() => setCountry('')}>关闭</button>
         </div>
       )}
     </div>
