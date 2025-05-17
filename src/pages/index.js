@@ -18,9 +18,9 @@ export default function Home() {
       zoom:1.5
     });
     map.on('load', ()=>{
-      map.addSource('countries',{
-type: 'geojson',
-data: '/countries.geojson'    // ← 从 public 目录下加载
+map.addSource('countries', {
+  type: 'geojson',
+  data: 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
 });
       map.addLayer({ id:'fill', type:'fill', source:'countries', paint:{'fill-color':'#627BC1','fill-opacity':0.5} });
       map.addLayer({ id:'border', type:'line', source:'countries', paint:{'line-color':'#fff','line-width':0.5} });
