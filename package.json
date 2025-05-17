@@ -1,0 +1,21 @@
+{
+  "name": "currency-reform-map",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "download-countries": "node scripts/download-countries.js"
+  },
+  "dependencies": {
+    "mapbox-gl": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "next-auth": "latest",
+    "@vercel/blob": "latest",
+    "node-fetch": "^3.0.0"
+  },
+  "type": "module"
+}
