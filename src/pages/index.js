@@ -1,12 +1,8 @@
-// src/pages/index.js
 import { useState, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useSession, signIn, signOut } from 'next-auth/react';
 
-const GEO_URL =
-  'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
-
-// 20 种类型对应的颜色映射
+// 20 种类型对应颜色
 const colorPalette = {
   'New Currency': '#e6194b',
   Redenomination: '#3cb44b',
@@ -27,7 +23,7 @@ const colorPalette = {
   'Exchange Regime Change': '#808000',
   Cryptocurrency: '#ffd8b1',
   'Institution Reform': '#000075',
-  Other: '#808080'
+  Other: '#808080',
 };
 
 export default function Home() {
@@ -36,64 +32,73 @@ export default function Home() {
   const mapContainer = useRef(null);
 
   const [year, setYear] = useState(2025);
-  const [geo, setGeo] = useState(null);
-  const [countryList, setCountryList] = useState([]);
-  const [countryCode, setCountryCode] = useState('');
+  const [countryCode, setCountryCode] = useState(''); // ISO3 code
+  const [countryList, setCountryList] = useState([]); // [{name,code}]
+  const [eventsMap, setEventsMap] = useState({});     // { [ISO3]: type }
   const [form, setForm] = useState({ type: '', title: '', desc: '', file: null });
 
-  // 1. 拉取 GeoJSON 并提取国家列表
+  // 1. 拉取国家列表（Rest Countries）
   useEffect(() => {
-    fetch(GEO_URL)
+    fetch('https://restcountries.com/v3.1/all?fields=name,cca3')
       .then((r) => r.json())
       .then((data) => {
-        // 添加默认 color
-        data.features.forEach((f) => {
-          f.properties.color = '#ccc';
-        });
-        setGeo(data);
-        const list = data.features
-          .map((f) => ({
-            name: f.properties.ADMIN,
-            code: f.properties.ISO_A3
-          }))
+        const list = data
+          .map((c) => ({ name: c.name.common, code: c.cca3 }))
           .sort((a, b) => a.name.localeCompare(b.name));
         setCountryList(list);
       })
       .catch(console.error);
   }, []);
 
-  // 2. 初始化 Mapbox
+  // 构造 fill-color 表达式
+  const buildColorExpr = () => {
+    // ['match', ['get','iso_3166_1_alpha_3'], code1, color1, code2, color2, ..., default]
+    const expr = ['match', ['get', 'iso_3166_1_alpha_3']];
+    Object.entries(eventsMap).forEach(([code, type]) => {
+      expr.push(code, colorPalette[type]);
+    });
+    expr.push('#627BC1'); // 默认颜色
+    return expr;
+  };
+
+  // 2. 初始化地图
   useEffect(() => {
-    if (!geo) return;
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v11',
       center: [0, 20],
-      zoom: 1.5
+      zoom: 1.5,
     });
     mapRef.current = map;
 
     map.on('load', () => {
-      map.addSource('countries', { type: 'geojson', data: geo });
+      map.addSource('countries', {
+        type: 'vector',
+        url: 'mapbox://mapbox.country-boundaries-v1',
+      });
+
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
         source: 'countries',
+        'source-layer': 'country_boundaries',
         paint: {
-          'fill-color': ['get', 'color'],
-          'fill-opacity': 0.7
-        }
+          'fill-color': buildColorExpr(),
+          'fill-opacity': 0.7,
+        },
       });
+
       map.addLayer({
         id: 'countries-line',
         type: 'line',
         source: 'countries',
-        paint: { 'line-color': '#fff', 'line-width': 0.5 }
+        'source-layer': 'country_boundaries',
+        paint: { 'line-color': '#fff', 'line-width': 0.5 },
       });
 
       map.on('click', 'countries-fill', (e) => {
-        setCountryCode(e.features[0].properties.ISO_A3);
+        setCountryCode(e.features[0].properties.iso_3166_1_alpha_3);
       });
       map.on('mouseenter', 'countries-fill', () => {
         map.getCanvas().style.cursor = 'pointer';
@@ -104,14 +109,18 @@ export default function Home() {
     });
 
     return () => map.remove();
-  }, [geo]);
+  }, []);
 
-  // 3. 保存事件，并更新地图颜色
+  // 3. 当 eventsMap 变化时，更新图层着色
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setPaintProperty('countries-fill', 'fill-color', buildColorExpr());
+  }, [eventsMap]);
+
+  // 保存并上色
   const handleSave = async () => {
-    if (!countryCode || !form.type) {
-      alert('请选择类型再保存');
-      return;
-    }
+    if (!form.type) return alert('请选择类型再保存');
     let fileUrl = '';
     if (form.file) {
       const res = await fetch(
@@ -120,43 +129,26 @@ export default function Home() {
       );
       fileUrl = (await res.json()).url;
     }
-    // 发送到后端
     await fetch('/api/save-event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        countryCode,
-        year,
-        ...form,
-        fileUrl
-      })
+      body: JSON.stringify({ countryCode, year, ...form, fileUrl }),
     });
     alert('保存成功');
-
-    // 立即在地图上更新颜色
-    const map = mapRef.current;
-    const source = map.getSource('countries');
-    const data = source._data; // GeoJSON object
-    data.features.forEach((f) => {
-      if (f.properties.ISO_A3 === countryCode) {
-        f.properties.color = colorPalette[form.type];
-      }
-    });
-    source.setData(data);
-
-    // 关闭面板
-    setCountryCode('');
+    // 更新本地事件映射并重置表单
+    setEventsMap((prev) => ({ ...prev, [countryCode]: form.type }));
     setForm({ type: '', title: '', desc: '', file: null });
+    setCountryCode('');
   };
 
-  const selectedCountry = countryList.find((c) => c.code === countryCode);
+  const selected = countryList.find((c) => c.code === countryCode);
 
   return (
     <div>
       {/* 地图容器 */}
       <div ref={mapContainer} id="map" />
 
-      {/* 国家下拉菜单 */}
+      {/* 国家下拉列表 */}
       <div className="selector">
         <label>
           国家列表：
@@ -203,7 +195,7 @@ export default function Home() {
       {countryCode && (
         <div className="panel">
           <h3>
-            {selectedCountry?.name} — {year}
+            {selected?.name || countryCode} — {year}
           </h3>
           {session?.user ? (
             <>
@@ -217,7 +209,9 @@ export default function Home() {
                 >
                   <option value="">请选择</option>
                   {Object.keys(colorPalette).map((t) => (
-                    <option key={t}>{t}</option>
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -254,7 +248,7 @@ export default function Home() {
               <button onClick={handleSave}>保存</button>
             </>
           ) : (
-            <p>只有管理员可编辑。</p>
+            <p>请管理员登录后再编辑。</p>
           )}
           <button onClick={() => setCountryCode('')}>关闭</button>
         </div>
