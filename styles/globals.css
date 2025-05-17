@@ -3,29 +3,43 @@ html, body, #__next {
   padding: 0;
   height: 100%;
 }
+
+/* 地图全屏 */
 #map {
   position: absolute;
-  top: 0; bottom: 0; width: 100%;
+  top: 0;
+  bottom: 0;
+  width: 100%;
 }
+
+/* 时间轴滑块面板 */
 .map-overlay {
   position: absolute;
-  top: 10px; left: 10px;
+  top: 10px;
+  left: 10px;
   background: rgba(255,255,255,0.8);
   padding: 5px;
   font-family: sans-serif;
+  z-index: 10;    /* ← 新增这一行 */
 }
+
+/* 编辑面板 */
 .panel {
   position: absolute;
-  top: 50px; right: 50px;
+  top: 50px;
+  right: 50px;
   background: #fff;
   padding: 15px;
   border: 1px solid #ccc;
   max-width: 300px;
   font-family: sans-serif;
+  z-index: 20;    /* ← 新增这一行 */
 }
+
 .panel h3 {
   margin-top: 0;
 }
+
 .panel label {
   display: block;
   margin-bottom: 8px;
