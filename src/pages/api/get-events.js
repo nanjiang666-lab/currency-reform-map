@@ -1,17 +1,28 @@
+// src/pages/api/get-events.js
+
 import fs from 'fs';
 import path from 'path';
 
-const EVENTS_FILE = path.join(process.cwd(), 'events.json');
+const EVENTS_PATH = path.join(process.cwd(), 'events.json');
 
 export default function handler(req, res) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', ['GET']);
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
   const { year } = req.query;
   let events = [];
   try {
-    events = JSON.parse(fs.readFileSync(EVENTS_FILE, 'utf-8'));
+    const raw = fs.readFileSync(EVENTS_PATH, 'utf-8');
+    events = JSON.parse(raw);
   } catch (e) {
     events = [];
   }
-  // 过滤出指定年份
-  const filtered = events.filter(e => String(e.year) === String(year));
-  res.status(200).json(filtered);
+
+  if (year) {
+    events = events.filter((e) => String(e.year) === String(year));
+  }
+
+  return res.status(200).json(events);
 }
