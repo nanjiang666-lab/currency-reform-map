@@ -2,45 +2,30 @@ import { useState, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useSession, signIn, signOut } from 'next-auth/react';
 
-const GEO_URL =
-  'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
-
 export default function Home() {
   const { data: session } = useSession();
   const mapContainer = useRef(null);
 
-  // 全局 State
   const [year, setYear] = useState(2025);
-  const [country, setCountry] = useState('');
-  const [countriesGeo, setCountriesGeo] = useState(null);
-  const [countryList, setCountryList] = useState([]);
-  const [form, setForm] = useState({
-    type: '',
-    title: '',
-    desc: '',
-    file: null
-  });
+  const [countryCode, setCountryCode] = useState(''); // ISO3 code
+  const [countryList, setCountryList] = useState([]); // [{name, cca3}]
+  const [form, setForm] = useState({ type: '', title: '', desc: '', file: null });
 
-  // 1. 预先拉取 GeoJSON 并提取国家列表
+  // 1. 拉取国家列表 (Rest Countries)
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(GEO_URL);
-        const data = await res.json();
-        setCountriesGeo(data);
-        const names = data.features
-          .map((f) => f.properties.ADMIN)
-          .sort((a, b) => a.localeCompare(b));
-        setCountryList(names);
-      } catch (e) {
-        console.error('加载国家 GeoJSON 失败', e);
-      }
-    })();
+    fetch('https://restcountries.com/v3.1/all?fields=name,cca3')
+      .then((r) => r.json())
+      .then((data) => {
+        const list = data
+          .map((c) => ({ name: c.name.common, code: c.cca3 }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setCountryList(list);
+      })
+      .catch(console.error);
   }, []);
 
-  // 2. GeoJSON 加载后初始化 Mapbox 地图
+  // 2. 初始化 Mapbox 矢量瓦片源
   useEffect(() => {
-    if (!countriesGeo) return;
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
       container: mapContainer.current,
@@ -50,26 +35,35 @@ export default function Home() {
     });
 
     map.on('load', () => {
-      map.addSource('countries', { type: 'geojson', data: countriesGeo });
+      map.addSource('countries', {
+        type: 'vector',
+        url: 'mapbox://mapbox.country-boundaries-v1'
+      });
 
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
         source: 'countries',
-        paint: { 'fill-color': '#627BC1', 'fill-opacity': 0.7 }
+        'source-layer': 'country_boundaries',
+        paint: {
+          'fill-color': '#627BC1',
+          'fill-opacity': 0.6
+        }
       });
 
       map.addLayer({
         id: 'countries-line',
         type: 'line',
         source: 'countries',
-        paint: { 'line-color': '#fff', 'line-width': 0.5 }
+        'source-layer': 'country_boundaries',
+        paint: { 'line-color': '#ffffff', 'line-width': 0.5 }
       });
 
-      // 点击国家面弹出编辑
+      // 点击某国：取 iso_3166_1_alpha_3 属性
       map.on('click', 'countries-fill', (e) => {
-        setCountry(e.features[0].properties.ADMIN);
+        setCountryCode(e.features[0].properties.iso_3166_1_alpha_3);
       });
+
       map.on('mouseenter', 'countries-fill', () => {
         map.getCanvas().style.cursor = 'pointer';
       });
@@ -79,9 +73,9 @@ export default function Home() {
     });
 
     return () => map.remove();
-  }, [countriesGeo]);
+  }, []);
 
-  // 3. 保存编辑
+  // 3. 保存事件
   const handleSave = async () => {
     let fileUrl = '';
     if (form.file) {
@@ -89,33 +83,41 @@ export default function Home() {
         `/api/upload?filename=${encodeURIComponent(form.file.name)}`,
         { method: 'POST', body: form.file }
       );
-      const blob = await res.json();
-      fileUrl = blob.url;
+      fileUrl = (await res.json()).url;
     }
     await fetch('/api/save-event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ country, year, ...form, fileUrl })
+      body: JSON.stringify({
+        countryCode,
+        year,
+        ...form,
+        fileUrl
+      })
     });
     alert('保存成功');
-    setCountry('');
+    setCountryCode('');
     setForm({ type: '', title: '', desc: '', file: null });
   };
 
+  // 找到当前选中国家的名字
+  const selectedCountryName =
+    countryList.find((c) => c.code === countryCode)?.name || '';
+
   return (
     <div>
-      {/* 地图容器 —— 在最底层 */}
+      {/* 地图容器 */}
       <div ref={mapContainer} id="map" />
 
-      {/* 国家下拉选择 —— 顶层遮罩 */}
+      {/* 下拉国家列表 */}
       <div
-        className="selector"
         style={{
           position: 'absolute',
           top: 10,
           left: 10,
           background: 'rgba(255,255,255,0.9)',
           padding: '8px',
+          borderRadius: 4,
           zIndex: 20,
           fontFamily: 'sans-serif'
         }}
@@ -123,14 +125,14 @@ export default function Home() {
         <label>
           国家列表：
           <select
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            style={{ marginLeft: '8px', minWidth: '150px' }}
+            value={countryCode}
+            onChange={(e) => setCountryCode(e.target.value)}
+            style={{ marginLeft: 8, minWidth: 160 }}
           >
             <option value="">—— 请选择 ——</option>
-            {countryList.map((name) => (
-              <option key={name} value={name}>
-                {name}
+            {countryList.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
               </option>
             ))}
           </select>
@@ -165,12 +167,11 @@ export default function Home() {
       </div>
 
       {/* 编辑面板 */}
-      {country && (
+      {countryCode && (
         <div className="panel">
           <h3>
-            {country} — {year < 0 ? `前${-year}` : year}
+            {selectedCountryName} — {year < 0 ? `前${-year}` : year}
           </h3>
-
           {session?.user?.email === process.env.ADMIN_EMAIL ? (
             <>
               <label>
@@ -243,7 +244,7 @@ export default function Home() {
           ) : (
             <p>只有管理员可编辑。</p>
           )}
-          <button onClick={() => setCountry('')}>关闭</button>
+          <button onClick={() => setCountryCode('')}>关闭</button>
         </div>
       )}
     </div>
