@@ -1,49 +1,77 @@
+/* styles/globals.css */
+
+/* 全局重置和布局 */
 html, body, #__next {
   margin: 0;
   padding: 0;
   height: 100%;
 }
 
-/* 地图 */
+/* 地图容器——位于最底层 */
 #map {
   position: absolute;
-  top: 0; bottom: 0; left: 0; right: 0;
-  z-index: 1;          /* 地图在最底层 */
+  top: 0; 
+  bottom: 0; 
+  left: 0; 
+  right: 0;
+  z-index: 1;
 }
 
-/* 侧边栏 */
-.sidebar {
+/* 国家下拉选择框 */
+.selector {
   position: absolute;
-  top: 10px; left: 10px;
-  width: 200px; bottom: 10px;
-  background: rgba(255,255,255,0.9);
-  overflow-y: auto;
-  z-index: 20;         /* 在地图上方 */
+  top: 10px;
+  left: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px;
+  border-radius: 4px;
+  z-index: 20;
+  font-family: sans-serif;
 }
 
-/* 滑块 */
+/* 时间轴滑块 */
 .map-overlay {
   position: absolute;
-  top: 10px; left: 220px;
-  background: rgba(255,255,255,0.8);
+  top: 10px;
+  left: 200px; /* 与下拉框错开 */
+  background: rgba(255, 255, 255, 0.8);
   padding: 5px;
   z-index: 20;
+  font-family: sans-serif;
 }
 
 /* 编辑面板 */
 .panel {
   position: absolute;
-  top: 10px; right: 10px;
-  background: #fff; padding: 15px;
+  top: 50px;
+  right: 10px;
+  background: #fff;
+  padding: 15px;
   border: 1px solid #ccc;
+  border-radius: 4px;
   z-index: 30;
+  max-width: 300px;
+  font-family: sans-serif;
 }
 
 .panel h3 {
-  margin-top: 0;
+  margin: 0 0 10px;
+  font-size: 1.2em;
 }
 
 .panel label {
   display: block;
-  margin: 8px 0;
+  margin-bottom: 8px;
+}
+
+.panel input[type="text"],
+.panel select,
+.panel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+}
+
+.panel button {
+  margin-top: 10px;
 }
