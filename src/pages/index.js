@@ -15,7 +15,6 @@ export default function Home() {
   });
 
   useEffect(() => {
-    // 初始化 Mapbox
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
       container: mapContainer.current,
@@ -24,63 +23,48 @@ export default function Home() {
       zoom: 1.5
     });
 
-map.on('load', () => {
-  map.addSource('countries', {
-    type: 'geojson',
-    data: 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
-  });
+    map.on('load', () => {
+      map.addSource('countries', {
+        type: 'geojson',
+        data: 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+      });
 
-  map.addLayer({
-    id: 'countries-fill',
-    type: 'fill',
-    source: 'countries',
-    paint: { 'fill-color': '#627BC1', 'fill-opacity': 0.7 }
-  });
+      map.addLayer({
+        id: 'countries-fill',
+        type: 'fill',
+        source: 'countries',
+        paint: {
+          'fill-color': '#627BC1',
+          'fill-opacity': 0.7
+        }
+      });
 
-  map.addLayer({
-    id: 'countries-line',
-    type: 'line',
-    source: 'countries',
-    paint: { 'line-color': '#fff', 'line-width': 0.5 }
-  });
-
-
-  // hover 时显示手型光标
-  map.on('mouseenter', 'countries-fill', () => {
-    map.getCanvas().style.cursor = 'pointer';
-  });
-  map.on('mouseleave', 'countries-fill', () => {
-    map.getCanvas().style.cursor = '';
-  });
-  // —— 交互添加完毕 —— 
-});
-
-      // 边界线层
       map.addLayer({
         id: 'countries-line',
         type: 'line',
         source: 'countries',
         paint: {
-          'line-color': '#ffffff',
+          'line-color': '#fff',
           'line-width': 0.5
         }
       });
-    });
 
-    // 对整个地图点击事件监听，使用 queryRenderedFeatures 捕获点到的国家面
-    map.on('click', (e) => {
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: ['countries-fill']
+      map.on('click', 'countries-fill', (e) => {
+        const clickedCountry = e.features[0].properties.ADMIN;
+        setCountry(clickedCountry);
       });
-      if (!features.length) return;           // 点击空白处不响应
-      const clickedCountry = features[0].properties.ADMIN;
-      setCountry(clickedCountry);             // 弹出编辑面板
+
+      map.on('mouseenter', 'countries-fill', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'countries-fill', () => {
+        map.getCanvas().style.cursor = '';
+      });
     });
 
     return () => map.remove();
   }, []);
 
-  // 保存编辑
   const handleSave = async () => {
     let fileUrl = '';
     if (form.file) {
@@ -102,22 +86,12 @@ map.on('load', () => {
 
   return (
     <div>
-      {/* 登录/登出 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 10,
-          right: 10,
-          zIndex: 20
-        }}
-      >
+      {/* 登录/登出按钮 */}
+      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
         {session?.user ? (
           <>
             已登录：{session.user.email}
-            <button
-              onClick={() => signOut()}
-              style={{ marginLeft: 8 }}
-            >
+            <button onClick={() => signOut()} style={{ marginLeft: 8 }}>
               登出
             </button>
           </>
@@ -160,7 +134,7 @@ map.on('load', () => {
                   }
                 >
                   <option value="">请选择</option>
-                  {/* 在此列出20种option */}
+                  {/* 20 种选项开始 */}
                   <option>New Currency</option>
                   <option>Redenomination</option>
                   <option>Decimalization</option>
@@ -181,9 +155,9 @@ map.on('load', () => {
                   <option>Cryptocurrency</option>
                   <option>Institution Reform</option>
                   <option>Other</option>
+                  {/* 20 种选项结束 */}
                 </select>
               </label>
-
               <label>
                 标题：
                 <input
@@ -194,7 +168,6 @@ map.on('load', () => {
                   }
                 />
               </label>
-
               <label>
                 报告描述：
                 <textarea
@@ -205,7 +178,6 @@ map.on('load', () => {
                   }
                 />
               </label>
-
               <label>
                 上传图片/文档：
                 <input
@@ -216,13 +188,11 @@ map.on('load', () => {
                   }
                 />
               </label>
-
               <button onClick={handleSave}>保存</button>
             </>
           ) : (
             <p>只有管理员可编辑。</p>
           )}
-
           <button onClick={() => setCountry(null)}>关闭</button>
         </div>
       )}
