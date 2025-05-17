@@ -9,32 +9,36 @@ export default function Home() {
   const { data: session } = useSession();
   const mapContainer = useRef(null);
 
-  // 全局状态
   const [year, setYear] = useState(2025);
   const [country, setCountry] = useState(null);
   const [countriesGeo, setCountriesGeo] = useState(null);
   const [countryList, setCountryList] = useState([]);
-  const [form, setForm] = useState({ type: '', title: '', desc: '', file: null });
+  const [form, setForm] = useState({
+    type: '',
+    title: '',
+    desc: '',
+    file: null
+  });
 
-  // 1) 预先 fetch 整个 GeoJSON，一次完成，存到 state
+  // 1. 预先 fetch GeoJSON 并提取国家名单
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch(GEO_URL);
         const data = await res.json();
         setCountriesGeo(data);
-        // 提取所有国家名并排序
-        const names = data.features
-          .map((f) => f.properties.ADMIN)
-          .sort((a, b) => a.localeCompare(b));
-        setCountryList(names);
+        setCountryList(
+          data.features
+            .map((f) => f.properties.ADMIN)
+            .sort((a, b) => a.localeCompare(b))
+        );
       } catch (e) {
         console.error('加载国家 GeoJSON 失败', e);
       }
     })();
   }, []);
 
-  // 2) 当 GeoJSON 加载完后，初始化地图并添加源/图层
+  // 2. GeoJSON 加载后初始化地图
   useEffect(() => {
     if (!countriesGeo) return;
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -46,45 +50,35 @@ export default function Home() {
     });
 
     map.on('load', () => {
-      // 使用内存中的 GeoJSON 对象作为 source
       map.addSource('countries', { type: 'geojson', data: countriesGeo });
-
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
         source: 'countries',
-        paint: {
-          'fill-color': '#627BC1',
-          'fill-opacity': 0.7
-        }
+        paint: { 'fill-color': '#627BC1', 'fill-opacity': 0.7 }
       });
-
       map.addLayer({
         id: 'countries-line',
         type: 'line',
         source: 'countries',
-        paint: {
-          'line-color': '#fff',
-          'line-width': 0.5
-        }
+        paint: { 'line-color': '#fff', 'line-width': 0.5 }
       });
 
-      // 点击某个国家面时，打开编辑面板
-      map.on('click', 'countries-fill', (e) => {
-        setCountry(e.features[0].properties.ADMIN);
-      });
-      map.on('mouseenter', 'countries-fill', () => {
-        map.getCanvas().style.cursor = 'pointer';
-      });
-      map.on('mouseleave', 'countries-fill', () => {
-        map.getCanvas().style.cursor = '';
-      });
+      map.on('click', 'countries-fill', (e) =>
+        setCountry(e.features[0].properties.ADMIN)
+      );
+      map.on('mouseenter', 'countries-fill', () =>
+        (map.getCanvas().style.cursor = 'pointer')
+      );
+      map.on('mouseleave', 'countries-fill', () =>
+        (map.getCanvas().style.cursor = '')
+      );
     });
 
     return () => map.remove();
   }, [countriesGeo]);
 
-  // 3) 保存编辑
+  // 3. 保存
   const handleSave = async () => {
     let fileUrl = '';
     if (form.file) {
@@ -106,7 +100,10 @@ export default function Home() {
 
   return (
     <div>
-      {/* 侧边栏：国家列表 */}
+      {/* 1. 地图容器 放最前面 */}
+      <div ref={mapContainer} id="map" />
+
+      {/* 2. 侧边栏：国家列表 */}
       <div className="sidebar">
         <h3>国家列表</h3>
         <ul>
@@ -118,7 +115,7 @@ export default function Home() {
         </ul>
       </div>
 
-      {/* 登录/登出按钮 */}
+      {/* 3. 登录/登出 */}
       <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 30 }}>
         {session?.user ? (
           <>
@@ -132,7 +129,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* 时间轴滑块 */}
+      {/* 4. 时间轴滑块 */}
       <div className="map-overlay">
         年份：{year < 0 ? `前${-year}` : year}
         <input
@@ -145,10 +142,7 @@ export default function Home() {
         />
       </div>
 
-      {/* 地图容器 */}
-      <div ref={mapContainer} id="map" />
-
-      {/* 编辑面板 */}
+      {/* 5. 编辑面板 */}
       {country && (
         <div className="panel">
           <h3>
@@ -160,10 +154,11 @@ export default function Home() {
                 类型：
                 <select
                   value={form.type}
-                  onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, type: e.target.value }))
+                  }
                 >
                   <option value="">请选择</option>
-                  {/* 20 种类型 */}
                   <option>New Currency</option>
                   <option>Redenomination</option>
                   <option>Decimalization</option>
@@ -191,7 +186,9 @@ export default function Home() {
                 <input
                   type="text"
                   value={form.title}
-                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, title: e.target.value }))
+                  }
                 />
               </label>
               <label>
@@ -199,7 +196,9 @@ export default function Home() {
                 <textarea
                   rows={4}
                   value={form.desc}
-                  onChange={(e) => setForm((f) => ({ ...f, desc: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, desc: e.target.value }))
+                  }
                 />
               </label>
               <label>
@@ -207,7 +206,9 @@ export default function Home() {
                 <input
                   type="file"
                   accept=".png,.doc,.docx"
-                  onChange={(e) => setForm((f) => ({ ...f, file: e.target.files[0] }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, file: e.target.files[0] }))
+                  }
                 />
               </label>
               <button onClick={handleSave}>保存</button>
