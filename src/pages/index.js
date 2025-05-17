@@ -5,8 +5,11 @@ import { useSession, signIn, signOut } from 'next-auth/react';
 export default function Home() {
   const { data: session } = useSession();
   const mapContainer = useRef(null);
+
   const [year, setYear] = useState(2025);
   const [country, setCountry] = useState(null);
+  const [countryList, setCountryList] = useState([]);
+
   const [form, setForm] = useState({
     type: '',
     title: '',
@@ -14,6 +17,7 @@ export default function Home() {
     file: null
   });
 
+  // 初始化地图
   useEffect(() => {
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
@@ -24,11 +28,14 @@ export default function Home() {
     });
 
     map.on('load', () => {
+      // 加载 GeoJSON
       map.addSource('countries', {
         type: 'geojson',
-        data: 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+        data:
+          'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
       });
 
+      // 添加填充层
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
@@ -39,21 +46,22 @@ export default function Home() {
         }
       });
 
+      // 添加描边层
       map.addLayer({
         id: 'countries-line',
         type: 'line',
         source: 'countries',
         paint: {
-          'line-color': '#fff',
+          'line-color': '#ffffff',
           'line-width': 0.5
         }
       });
 
+      // 点击国家面
       map.on('click', 'countries-fill', (e) => {
-        const clickedCountry = e.features[0].properties.ADMIN;
-        setCountry(clickedCountry);
+        const clicked = e.features[0].properties.ADMIN;
+        setCountry(clicked);
       });
-
       map.on('mouseenter', 'countries-fill', () => {
         map.getCanvas().style.cursor = 'pointer';
       });
@@ -65,6 +73,21 @@ export default function Home() {
     return () => map.remove();
   }, []);
 
+  // 拉取全部国家名称，用于列表
+  useEffect(() => {
+    fetch(
+      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        const names = data.features
+          .map((f) => f.properties.ADMIN)
+          .sort((a, b) => a.localeCompare(b));
+        setCountryList(names);
+      });
+  }, []);
+
+  // 保存编辑
   const handleSave = async () => {
     let fileUrl = '';
     if (form.file) {
@@ -86,8 +109,20 @@ export default function Home() {
 
   return (
     <div>
-      {/* 登录/登出按钮 */}
-      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
+      {/* 国家列表侧边栏 */}
+      <div className="sidebar">
+        <h3>国家列表</h3>
+        <ul>
+          {countryList.map((name) => (
+            <li key={name}>
+              <button onClick={() => setCountry(name)}>{name}</button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 登录/登出 */}
+      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 30 }}>
         {session?.user ? (
           <>
             已登录：{session.user.email}
@@ -134,7 +169,6 @@ export default function Home() {
                   }
                 >
                   <option value="">请选择</option>
-                  {/* 20 种选项开始 */}
                   <option>New Currency</option>
                   <option>Redenomination</option>
                   <option>Decimalization</option>
@@ -155,9 +189,9 @@ export default function Home() {
                   <option>Cryptocurrency</option>
                   <option>Institution Reform</option>
                   <option>Other</option>
-                  {/* 20 种选项结束 */}
                 </select>
               </label>
+
               <label>
                 标题：
                 <input
@@ -168,6 +202,7 @@ export default function Home() {
                   }
                 />
               </label>
+
               <label>
                 报告描述：
                 <textarea
@@ -178,6 +213,7 @@ export default function Home() {
                   }
                 />
               </label>
+
               <label>
                 上传图片/文档：
                 <input
@@ -188,11 +224,13 @@ export default function Home() {
                   }
                 />
               </label>
+
               <button onClick={handleSave}>保存</button>
             </>
           ) : (
             <p>只有管理员可编辑。</p>
           )}
+
           <button onClick={() => setCountry(null)}>关闭</button>
         </div>
       )}
