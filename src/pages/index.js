@@ -24,24 +24,36 @@ export default function Home() {
       zoom: 1.5
     });
 
-    map.on('load', () => {
-      // 加载国家边界 GeoJSON
-      map.addSource('countries', {
-        type: 'geojson',
-        data:
-          'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
-      });
+map.on('load', () => {
+  map.addSource('countries', {
+    type: 'geojson',
+    data: 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+  });
 
-      // 填充层
-      map.addLayer({
-        id: 'countries-fill',
-        type: 'fill',
-        source: 'countries',
-        paint: {
-          'fill-color': '#627BC1',
-          'fill-opacity': 0.7
-        }
-      });
+  map.addLayer({
+    id: 'countries-fill',
+    type: 'fill',
+    source: 'countries',
+    paint: { 'fill-color': '#627BC1', 'fill-opacity': 0.7 }
+  });
+
+  map.addLayer({
+    id: 'countries-line',
+    type: 'line',
+    source: 'countries',
+    paint: { 'line-color': '#fff', 'line-width': 0.5 }
+  });
+
+
+  // hover 时显示手型光标
+  map.on('mouseenter', 'countries-fill', () => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+  map.on('mouseleave', 'countries-fill', () => {
+    map.getCanvas().style.cursor = '';
+  });
+  // —— 交互添加完毕 —— 
+});
 
       // 边界线层
       map.addLayer({
