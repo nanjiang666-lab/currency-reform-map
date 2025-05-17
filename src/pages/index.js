@@ -28,6 +28,17 @@ export default function Home() {
     });
 
     map.on('load', () => {
+      // 在 map.on('load', …) 的末尾，加入：
+map.once('idle', () => {
+  // 拿到当前视野下所有 'countries-fill' 图层 feature
+  const features = map.queryRenderedFeatures({ layers: ['countries-fill'] });
+  // 去重、按拼音排序
+  const names = Array.from(new Set(
+    features.map(f => f.properties.ADMIN)
+  )).sort((a, b) => a.localeCompare(b));
+  setCountryList(names);
+});
+
       // 加载 GeoJSON
       map.addSource('countries', {
         type: 'geojson',
@@ -71,20 +82,6 @@ export default function Home() {
     });
 
     return () => map.remove();
-  }, []);
-
-  // 拉取全部国家名称，用于列表
-  useEffect(() => {
-    fetch(
-      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        const names = data.features
-          .map((f) => f.properties.ADMIN)
-          .sort((a, b) => a.localeCompare(b));
-        setCountryList(names);
-      });
   }, []);
 
   // 保存编辑
