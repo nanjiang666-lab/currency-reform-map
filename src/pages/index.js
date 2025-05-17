@@ -15,6 +15,7 @@ export default function Home() {
   });
 
   useEffect(() => {
+    // 初始化 Mapbox
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
       container: mapContainer.current,
@@ -22,31 +23,52 @@ export default function Home() {
       center: [0, 20],
       zoom: 1.5
     });
+
     map.on('load', () => {
+      // 加载国家边界 GeoJSON
       map.addSource('countries', {
         type: 'geojson',
         data:
           'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
       });
+
+      // 填充层
       map.addLayer({
-        id: 'fill',
+        id: 'countries-fill',
         type: 'fill',
         source: 'countries',
-        paint: { 'fill-color': '#627BC1', 'fill-opacity': 0.5 }
+        paint: {
+          'fill-color': '#627BC1',
+          'fill-opacity': 0.7
+        }
       });
+
+      // 边界线层
       map.addLayer({
-        id: 'border',
+        id: 'countries-line',
         type: 'line',
         source: 'countries',
-        paint: { 'line-color': '#fff', 'line-width': 0.5 }
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 0.5
+        }
       });
     });
-    map.on('click', 'fill', (e) =>
-      setCountry(e.features[0].properties.ADMIN)
-    );
+
+    // 对整个地图点击事件监听，使用 queryRenderedFeatures 捕获点到的国家面
+    map.on('click', (e) => {
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: ['countries-fill']
+      });
+      if (!features.length) return;           // 点击空白处不响应
+      const clickedCountry = features[0].properties.ADMIN;
+      setCountry(clickedCountry);             // 弹出编辑面板
+    });
+
     return () => map.remove();
   }, []);
 
+  // 保存编辑
   const handleSave = async () => {
     let fileUrl = '';
     if (form.file) {
@@ -68,12 +90,22 @@ export default function Home() {
 
   return (
     <div>
-      {/* 登录/登出按钮 */}
-      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 10 }}>
+      {/* 登录/登出 */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          zIndex: 20
+        }}
+      >
         {session?.user ? (
           <>
             已登录：{session.user.email}
-            <button onClick={() => signOut()} style={{ marginLeft: 8 }}>
+            <button
+              onClick={() => signOut()}
+              style={{ marginLeft: 8 }}
+            >
               登出
             </button>
           </>
@@ -84,7 +116,7 @@ export default function Home() {
 
       {/* 时间轴滑块 */}
       <div className="map-overlay">
-        年份：{year}
+        年份：{year < 0 ? `前${-year}` : year}
         <input
           type="range"
           min={-2000}
@@ -102,8 +134,9 @@ export default function Home() {
       {country && (
         <div className="panel">
           <h3>
-            {country} — {year < 0 ? `前${-year}` : `${year}`}
+            {country} — {year < 0 ? `前${-year}` : year}
           </h3>
+
           {session?.user?.email === process.env.ADMIN_EMAIL ? (
             <>
               <label>
@@ -115,7 +148,7 @@ export default function Home() {
                   }
                 >
                   <option value="">请选择</option>
-                  {/* 在此列出 20 种 option */}
+                  {/* 在此列出20种option */}
                   <option>New Currency</option>
                   <option>Redenomination</option>
                   <option>Decimalization</option>
@@ -151,7 +184,7 @@ export default function Home() {
               </label>
 
               <label>
-                描述：
+                报告描述：
                 <textarea
                   rows={4}
                   value={form.desc}
@@ -162,10 +195,10 @@ export default function Home() {
               </label>
 
               <label>
-                文件：
+                上传图片/文档：
                 <input
                   type="file"
-                  accept=".doc,.docx,.png"
+                  accept=".png,.doc,.docx"
                   onChange={(e) =>
                     setForm((f) => ({ ...f, file: e.target.files[0] }))
                   }
@@ -177,6 +210,7 @@ export default function Home() {
           ) : (
             <p>只有管理员可编辑。</p>
           )}
+
           <button onClick={() => setCountry(null)}>关闭</button>
         </div>
       )}
