@@ -7,11 +7,40 @@ import { useSession, signIn, signOut } from 'next-auth/react';
 export default function Home() {
   const { data: session } = useSession();
   const mapContainer = useRef(null);
+  const mapRef = useRef(null);
 
   const [year, setYear] = useState(2025);
   const [countryCode, setCountryCode] = useState(''); // ISO3 code
   const [countryList, setCountryList] = useState([]); // [{name, code}]
   const [form, setForm] = useState({ type: '', title: '', desc: '', file: null });
+
+  // ←—— 新增：存放当年所有国家的事件
+  const [eventsMap, setEventsMap] = useState({}); 
+  //   结构：{ [countryCode]: { type, title, desc, fileUrl } }
+
+  // 类型与对应颜色映射
+  const colorPalette = {
+    'New Currency': '#e6194b',
+    Redenomination: '#3cb44b',
+    Decimalization: '#ffe119',
+    Devaluation: '#4363d8',
+    Revaluation: '#f58231',
+    'Join Euro': '#911eb4',
+    'Leave Euro': '#46f0f0',
+    Dollarization: '#f032e6',
+    'De-Dollarization': '#bcf60c',
+    'Peg Change': '#fabebe',
+    'Currency Board': '#008080',
+    'Monetary Union': '#e6beff',
+    'Exit Union': '#9a6324',
+    'Gold Standard': '#fffac8',
+    'Abandon Gold': '#800000',
+    'Banknotes Redesign': '#aaffc3',
+    'Exchange Regime Change': '#808000',
+    Cryptocurrency: '#ffd8b1',
+    'Institution Reform': '#000075',
+    Other: '#808080'
+  };
 
   // 1. 拉取国家列表 (Rest Countries)
   useEffect(() => {
@@ -26,6 +55,25 @@ export default function Home() {
       .catch(console.error);
   }, []);
 
+  // ←—— 新增：当年份变化时，拉取当年所有事件
+  useEffect(() => {
+    fetch(`/api/get-events?year=${year}`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((events) => {
+        const m = {};
+        events.forEach((e) => {
+          m[e.countryCode] = {
+            type: e.type,
+            title: e.title,
+            desc: e.desc,
+            fileUrl: e.fileUrl
+          };
+        });
+        setEventsMap(m);
+      })
+      .catch(console.error);
+  }, [year]);
+
   // 2. 初始化 Mapbox 矢量瓦片源
   useEffect(() => {
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -35,6 +83,7 @@ export default function Home() {
       center: [0, 20],
       zoom: 1.5
     });
+    mapRef.current = map;
 
     map.on('load', () => {
       map.addSource('countries', {
@@ -75,13 +124,36 @@ export default function Home() {
     return () => map.remove();
   }, []);
 
-  // 3. 保存事件
+  // ←—— 新增：当 eventsMap 变化时，给 countries-fill 图层上色
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    // 构建 match 表达式
+    const expr = ['match', ['get', 'iso_3166_1_alpha_3']];
+    Object.entries(eventsMap).forEach(([code, ev]) => {
+      expr.push(code, colorPalette[ev.type] || '#627BC1');
+    });
+    expr.push('#627BC1');
+    map.setPaintProperty('countries-fill', 'fill-color', expr);
+  }, [eventsMap]);
+
+  // ←—— 新增：当选中国家或年份变化时，将对应 event 填入表单
+  useEffect(() => {
+    if (!countryCode) return;
+    const ev = eventsMap[countryCode];
+    if (ev) {
+      setForm({ type: ev.type, title: ev.title, desc: ev.desc, file: null });
+    } else {
+      setForm({ type: '', title: '', desc: '', file: null });
+    }
+  }, [countryCode, eventsMap]);
+
+  // 3. 保存事件（仅影响当前国家+年份）
   const handleSave = async () => {
     if (!form.type) {
       alert('请选择类型后再保存');
       return;
     }
-    // 上传文件（可选）
     let fileUrl = '';
     if (form.file) {
       const uploadRes = await fetch(
@@ -91,7 +163,6 @@ export default function Home() {
       const uploadJson = await uploadRes.json();
       fileUrl = uploadJson.url;
     }
-    // 调用保存接口，并携带登录 Cookie
     const resp = await fetch('/api/save-event', {
       method: 'POST',
       credentials: 'include',
@@ -111,9 +182,11 @@ export default function Home() {
       return;
     }
     alert('保存成功');
-    // 重置状态
-    setCountryCode('');
-    setForm({ type: '', title: '', desc: '', file: null });
+    // ←—— 新增：保存后更新本地状态，保持面板和颜色
+    setEventsMap((prev) => ({
+      ...prev,
+      [countryCode]: { type: form.type, title: form.title, desc: form.desc, fileUrl }
+    }));
   };
 
   // 找到当前选中国家的名字
@@ -255,7 +328,6 @@ export default function Home() {
                 />
               </label>
 
-              {/* 保存按钮调用 handleSave */}
               <button onClick={handleSave}>保存</button>
             </>
           ) : (
