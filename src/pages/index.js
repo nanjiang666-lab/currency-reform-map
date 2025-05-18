@@ -10,16 +10,16 @@ export default function Home() {
 
   const [year, setYear] = useState(2025);
   const [countryCode, setCountryCode] = useState(''); // ISO3 code
-  const [countryList, setCountryList] = useState([]); // [{name, code}]
+  const [countryList, setCountryList] = useState([]); // [{ name, code }]
   const [form, setForm] = useState({ type: '', title: '', desc: '', file: null });
 
-  // 1. 拉取国家列表 (Rest Countries)
+  // 1. 拉取国家列表
   useEffect(() => {
     fetch('https://restcountries.com/v3.1/all?fields=name,cca3')
-      .then((r) => r.json())
-      .then((data) => {
+      .then(r => r.json())
+      .then(data => {
         const list = data
-          .map((c) => ({ name: c.name.common, code: c.cca3 }))
+          .map(c => ({ name: c.name.common, code: c.cca3 }))
           .sort((a, b) => a.name.localeCompare(b.name));
         setCountryList(list);
       })
@@ -41,7 +41,6 @@ export default function Home() {
         type: 'vector',
         url: 'mapbox://mapbox.country-boundaries-v1'
       });
-
       map.addLayer({
         id: 'countries-fill',
         type: 'fill',
@@ -52,7 +51,6 @@ export default function Home() {
           'fill-opacity': 0.6
         }
       });
-
       map.addLayer({
         id: 'countries-line',
         type: 'line',
@@ -75,13 +73,33 @@ export default function Home() {
     return () => map.remove();
   }, []);
 
-  // 3. 保存事件
+  // 3. 面板打开或年份切换时，加载已保存内容
+  useEffect(() => {
+    if (!countryCode) return;
+    fetch(`/api/get-events?year=${year}`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(events => {
+        const ev = events.find(e => e.countryCode === countryCode);
+        if (ev) {
+          setForm({
+            type: ev.type || '',
+            title: ev.title || '',
+            desc: ev.desc || '',
+            file: null
+          });
+        } else {
+          setForm({ type: '', title: '', desc: '', file: null });
+        }
+      })
+      .catch(console.error);
+  }, [countryCode, year]);
+
+  // 4. 保存事件
   const handleSave = async () => {
     if (!form.type) {
       alert('请选择类型后再保存');
       return;
     }
-    // 上传文件（可选）
     let fileUrl = '';
     if (form.file) {
       const uploadRes = await fetch(
@@ -91,7 +109,6 @@ export default function Home() {
       const uploadJson = await uploadRes.json();
       fileUrl = uploadJson.url;
     }
-    // 调用保存接口，并携带登录 Cookie
     const resp = await fetch('/api/save-event', {
       method: 'POST',
       credentials: 'include',
@@ -111,14 +128,11 @@ export default function Home() {
       return;
     }
     alert('保存成功');
-    // 重置状态
-    setCountryCode('');
-    setForm({ type: '', title: '', desc: '', file: null });
+    // 保持 countryCode 和 form 不变，用户可以立即看到刚保存的数据
   };
 
-  // 找到当前选中国家的名字
   const selectedCountryName =
-    countryList.find((c) => c.code === countryCode)?.name || '';
+    countryList.find(c => c.code === countryCode)?.name || '';
 
   return (
     <div>
@@ -142,11 +156,11 @@ export default function Home() {
           国家列表：
           <select
             value={countryCode}
-            onChange={(e) => setCountryCode(e.target.value)}
+            onChange={e => setCountryCode(e.target.value)}
             style={{ marginLeft: 8, minWidth: 160 }}
           >
             <option value="">—— 请选择 ——</option>
-            {countryList.map((c) => (
+            {countryList.map(c => (
               <option key={c.code} value={c.code}>
                 {c.name}
               </option>
@@ -178,7 +192,7 @@ export default function Home() {
           max={2025}
           step={10}
           value={year}
-          onChange={(e) => setYear(+e.target.value)}
+          onChange={e => setYear(+e.target.value)}
         />
       </div>
 
@@ -194,8 +208,8 @@ export default function Home() {
                 类型：
                 <select
                   value={form.type}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, type: e.target.value }))
+                  onChange={e =>
+                    setForm(f => ({ ...f, type: e.target.value }))
                   }
                 >
                   <option value="">请选择</option>
@@ -227,8 +241,8 @@ export default function Home() {
                 <input
                   type="text"
                   value={form.title}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, title: e.target.value }))
+                  onChange={e =>
+                    setForm(f => ({ ...f, title: e.target.value }))
                   }
                 />
               </label>
@@ -238,8 +252,8 @@ export default function Home() {
                 <textarea
                   rows={4}
                   value={form.desc}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, desc: e.target.value }))
+                  onChange={e =>
+                    setForm(f => ({ ...f, desc: e.target.value }))
                   }
                 />
               </label>
@@ -249,13 +263,12 @@ export default function Home() {
                 <input
                   type="file"
                   accept=".png,.doc,.docx"
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, file: e.target.files[0] }))
+                  onChange={e =>
+                    setForm(f => ({ ...f, file: e.target.files[0] }))
                   }
                 />
               </label>
 
-              {/* 保存按钮调用 handleSave */}
               <button onClick={handleSave}>保存</button>
             </>
           ) : (
