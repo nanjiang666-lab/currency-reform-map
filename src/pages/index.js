@@ -1,269 +1,216 @@
 // src/pages/index.js
 
-import { useState, useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
+import React, { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useSession, signIn, signOut } from 'next-auth/react';
 
-export default function Home() {
+// 20 种类型与颜色映射
+const colorPalette = {
+  'New Currency': '#e6194b',
+  Redenomination: '#3cb44b',
+  Decimalization: '#ffe119',
+  Devaluation: '#4363d8',
+  Revaluation: '#f58231',
+  'Join Euro': '#911eb4',
+  'Leave Euro': '#46f0f0',
+  Dollarization: '#f032e6',
+  'De-Dollarization': '#bcf60c',
+  'Peg Change': '#fabebe',
+  'Currency Board': '#008080',
+  'Monetary Union': '#e6beff',
+  'Exit Union': '#9a6324',
+  'Gold Standard': '#fffac8',
+  'Abandon Gold': '#800000',
+  'Banknotes Redesign': '#aaffc3',
+  'Exchange Regime Change': '#808000',
+  Cryptocurrency: '#ffd8b1',
+  'Institution Reform': '#000075',
+  Other: '#808080'
+};
+
+// 仅客户端加载 mapbox-gl
+const mapboxgl = typeof window !== 'undefined' ? require('mapbox-gl') : null;
+
+function Home() {
   const { data: session } = useSession();
   const mapContainer = useRef(null);
+  const mapRef = useRef(null);
 
   const [year, setYear] = useState(2025);
-  const [countryCode, setCountryCode] = useState(''); // ISO3 code
-  const [countryList, setCountryList] = useState([]); // [{name, code}]
-  const [form, setForm] = useState({ type: '', title: '', desc: '', file: null });
+  const [countryCode, setCountryCode] = useState('');
+  const [countryList, setCountryList] = useState([]);
+  const [eventsMap, setEventsMap] = useState({});
+  const [form, setForm] = useState({
+    type: '',
+    title: '',
+    desc: '',
+    file: null
+  });
 
-  // 1. 拉取国家列表 (Rest Countries)
+  // 1. 拉取国家列表
   useEffect(() => {
     fetch('https://restcountries.com/v3.1/all?fields=name,cca3')
-      .then((r) => r.json())
-      .then((data) => {
+      .then(r => r.json())
+      .then(data => {
         const list = data
-          .map((c) => ({ name: c.name.common, code: c.cca3 }))
-          .sort((a, b) => a.name.localeCompare(b.name));
+          .map(c => ({ name: c.name.common, code: c.cca3 }))
+          .sort((a,b) => a.name.localeCompare(b.name));
         setCountryList(list);
       })
       .catch(console.error);
   }, []);
 
-  // 2. 初始化 Mapbox 矢量瓦片源
+  // 2. 每次年份变更，重新拉所有事件不上前端
   useEffect(() => {
+    fetch(`/api/get-events?year=${year}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(events => {
+        const m = {};
+        events.forEach(e => { m[e.countryCode] = { type: e.type, title: e.title, desc: e.desc, fileUrl: e.fileUrl }});
+        setEventsMap(m);
+      })
+      .catch(console.error);
+  }, [year]);
+
+  // 3. 地图初始化
+  useEffect(() => {
+    if (!mapboxgl) return;
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v11',
-      center: [0, 20],
-      zoom: 1.5
+      center: [0,20], zoom:1.5
     });
-
+    mapRef.current = map;
     map.on('load', () => {
-      map.addSource('countries', {
-        type: 'vector',
-        url: 'mapbox://mapbox.country-boundaries-v1'
-      });
-
+      map.addSource('countries',{type:'vector',url:'mapbox://mapbox.country-boundaries-v1'});
       map.addLayer({
-        id: 'countries-fill',
-        type: 'fill',
-        source: 'countries',
-        'source-layer': 'country_boundaries',
-        paint: {
-          'fill-color': '#627BC1',
-          'fill-opacity': 0.6
-        }
+        id:'countries-fill', type:'fill', source:'countries','source-layer':'country_boundaries',
+        paint:{'fill-color': ['match', ['get','iso_3166_1_alpha_3'], ...Object.entries(eventsMap).flat(), '#627BC1'], 'fill-opacity':0.7}
       });
-
       map.addLayer({
-        id: 'countries-line',
-        type: 'line',
-        source: 'countries',
-        'source-layer': 'country_boundaries',
-        paint: { 'line-color': '#ffffff', 'line-width': 0.5 }
+        id:'countries-line', type:'line', source:'countries','source-layer':'country_boundaries',
+        paint:{'line-color':'#fff','line-width':0.5}
       });
-
-      map.on('click', 'countries-fill', (e) => {
+      map.on('click','countries-fill', e => {
         setCountryCode(e.features[0].properties.iso_3166_1_alpha_3);
       });
-      map.on('mouseenter', 'countries-fill', () => {
-        map.getCanvas().style.cursor = 'pointer';
-      });
-      map.on('mouseleave', 'countries-fill', () => {
-        map.getCanvas().style.cursor = '';
-      });
+      map.on('mouseenter','countries-fill',()=>map.getCanvas().style.cursor='pointer');
+      map.on('mouseleave','countries-fill',()=>map.getCanvas().style.cursor='');
     });
-
-    return () => map.remove();
+    return ()=>map.remove();
   }, []);
 
-  // 3. 保存事件
+  // 4. 每次 eventsMap 变更，更新着色表达式
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const expr = ['match', ['get','iso_3166_1_alpha_3']];
+    Object.entries(eventsMap).forEach(([code, ev]) => expr.push(code, colorPalette[ev.type]));
+    expr.push('#627BC1');
+    map.setPaintProperty('countries-fill','fill-color',expr);
+  }, [eventsMap]);
+
+  // 5. 当打开面板(countryCode, year)时，填充已有记录
+  useEffect(() => {
+    if (!countryCode) return;
+    const ev = eventsMap[countryCode];
+    if (ev) {
+      setForm({ type: ev.type, title: ev.title, desc: ev.desc, file: null });
+    } else {
+      setForm({ type:'', title:'', desc:'', file:null });
+    }
+  }, [countryCode, eventsMap]);
+
+  // 保存事件
   const handleSave = async () => {
-    if (!form.type) {
-      alert('请选择类型后再保存');
-      return;
-    }
-    // 上传文件（可选）
-    let fileUrl = '';
+    if (!form.type) { alert('请选择类型'); return; }
+    let fileUrl = eventsMap[countryCode]?.fileUrl||'';
     if (form.file) {
-      const uploadRes = await fetch(
-        `/api/upload?filename=${encodeURIComponent(form.file.name)}`,
-        { method: 'POST', body: form.file }
+      const r = await fetch(
+        `/api/upload?filename=${encodeURIComponent(form.file.name)}`,{method:'POST',body:form.file}
       );
-      const uploadJson = await uploadRes.json();
-      fileUrl = uploadJson.url;
+      fileUrl = (await r.json()).url;
     }
-    // 调用保存接口，并携带登录 Cookie
-    const resp = await fetch('/api/save-event', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        countryCode,
-        year,
+    const resp = await fetch('/api/save-event',{
+      method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        countryCode,year,
         type: form.type,
         title: form.title,
         desc: form.desc,
         fileUrl
       })
     });
-    if (!resp.ok) {
-      const err = await resp.json();
-      alert('保存失败：' + (err.error || resp.statusText));
-      return;
-    }
+    if (!resp.ok) { alert('保存失败'); return; }
     alert('保存成功');
-    // 重置状态
-    setCountryCode('');
-    setForm({ type: '', title: '', desc: '', file: null });
+    // 本地更新
+    setEventsMap(prev=>({
+      ...prev,
+      [countryCode]:{type:form.type,title:form.title,desc:form.desc,fileUrl}
+    }));
   };
 
-  // 找到当前选中国家的名字
-  const selectedCountryName =
-    countryList.find((c) => c.code === countryCode)?.name || '';
+  const selectedName = countryList.find(c=>c.code===countryCode)?.name||countryCode;
 
   return (
     <div>
-      {/* 地图容器 */}
       <div ref={mapContainer} id="map" />
-
-      {/* 下拉国家列表 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 10,
-          left: 10,
-          background: 'rgba(255,255,255,0.9)',
-          padding: '8px',
-          borderRadius: 4,
-          zIndex: 20,
-          fontFamily: 'sans-serif'
-        }}
-      >
-        <label>
-          国家列表：
-          <select
-            value={countryCode}
-            onChange={(e) => setCountryCode(e.target.value)}
-            style={{ marginLeft: 8, minWidth: 160 }}
-          >
+      <div className="selector">
+        <label>国家列表：
+          <select value={countryCode} onChange={e=>setCountryCode(e.target.value)}>
             <option value="">—— 请选择 ——</option>
-            {countryList.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name}
-              </option>
+            {countryList.map(c=>(
+              <option key={c.code} value={c.code}>{c.name}</option>
             ))}
           </select>
         </label>
       </div>
-
-      {/* 登录/登出 */}
-      <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}>
-        {session?.user ? (
-          <>
-            已登录：{session.user.email}
-            <button onClick={() => signOut()} style={{ marginLeft: 8 }}>
-              登出
-            </button>
-          </>
-        ) : (
-          <button onClick={() => signIn()}>管理员登录</button>
-        )}
-      </div>
-
-      {/* 时间轴滑块 */}
       <div className="map-overlay">
-        年份：{year < 0 ? `前${-year}` : year}
-        <input
-          type="range"
-          min={-2000}
-          max={2025}
-          step={10}
-          value={year}
-          onChange={(e) => setYear(+e.target.value)}
-        />
+        年份：{year<0?`前${-year}`:year}
+        <input type="range" min={-2000} max={2025} step={10}
+          value={year} onChange={e=>setYear(+e.target.value)} />
       </div>
-
-      {/* 编辑面板 */}
+      <div className="auth">
+        {session?.user
+          ? <>已登录：{session.user.email}<button onClick={()=>signOut()}>登出</button></>
+          : <button onClick={()=>signIn()}>管理员登录</button>}
+      </div>
       {countryCode && (
         <div className="panel">
-          <h3>
-            {selectedCountryName} — {year < 0 ? `前${-year}` : year}
-          </h3>
+          <h3>{selectedName} — {year<0?`前${-year}`:year}</h3>
           {session?.user ? (
             <>
-              <label>
-                类型：
-                <select
-                  value={form.type}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, type: e.target.value }))
-                  }
-                >
+              <label>类型：
+                <select value={form.type}
+                  onChange={e=>setForm(f=>({...f,type:e.target.value}))}>
                   <option value="">请选择</option>
-                  <option>New Currency</option>
-                  <option>Redenomination</option>
-                  <option>Decimalization</option>
-                  <option>Devaluation</option>
-                  <option>Revaluation</option>
-                  <option>Join Euro</option>
-                  <option>Leave Euro</option>
-                  <option>Dollarization</option>
-                  <option>De-Dollarization</option>
-                  <option>Peg Change</option>
-                  <option>Currency Board</option>
-                  <option>Monetary Union</option>
-                  <option>Exit Union</option>
-                  <option>Gold Standard</option>
-                  <option>Abandon Gold</option>
-                  <option>Banknotes Redesign</option>
-                  <option>Exchange Regime Change</option>
-                  <option>Cryptocurrency</option>
-                  <option>Institution Reform</option>
-                  <option>Other</option>
+                  {Object.keys(colorPalette).map(t=>(
+                    <option key={t} value={t}>{t}</option>
+                  ))}
                 </select>
               </label>
-
-              <label>
-                标题：
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, title: e.target.value }))
-                  }
-                />
+              <label>标题：
+                <input value={form.title}
+                  onChange={e=>setForm(f=>({...f,title:e.target.value}))}/>
               </label>
-
-              <label>
-                描述：
-                <textarea
-                  rows={4}
-                  value={form.desc}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, desc: e.target.value }))
-                  }
-                />
+              <label>描述：
+                <textarea rows={4} value={form.desc}
+                  onChange={e=>setForm(f=>({...f,desc:e.target.value}))}/>
               </label>
-
-              <label>
-                上传图片/文档：
-                <input
-                  type="file"
-                  accept=".png,.doc,.docx"
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, file: e.target.files[0] }))
-                  }
-                />
+              <label>文件：
+                <input type="file" accept=".png,.doc,.docx"
+                  onChange={e=>setForm(f=>({...f,file:e.target.files[0]}))}/>
               </label>
-
-              {/* 保存按钮调用 handleSave */}
               <button onClick={handleSave}>保存</button>
             </>
-          ) : (
-            <p>只有管理员可编辑。</p>
-          )}
-          <button onClick={() => setCountryCode('')}>关闭</button>
+          ) : <p>请登录后再编辑。</p>}
+          <button onClick={()=>setCountryCode('')}>关闭</button>
         </div>
       )}
     </div>
   );
 }
+
+export default dynamic(() => Promise.resolve(Home), { ssr: false });
