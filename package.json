@@ -13,7 +13,8 @@
     "react-dom": "18.2.0",
     "next-auth": "^4.24.11",
     "mapbox-gl": "^2.15.0",
-    "@upstash/redis": "^1.34.9"
+    "@upstash/redis": "^1.34.9",
+    "@vercel/blob": "^1.1.0"
   },
   "devDependencies": {
     "@swc/core": "^1.4.56",
