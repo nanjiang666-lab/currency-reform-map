@@ -1,28 +1,25 @@
-// src/pages/api/get-events.js
+import { Redis } from '@upstash/redis';
 
-import fs from 'fs';
-import path from 'path';
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
-const EVENTS_PATH = path.join(process.cwd(), 'events.json');
-
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   const { year } = req.query;
-  let events = [];
-  try {
-    const raw = fs.readFileSync(EVENTS_PATH, 'utf-8');
-    events = JSON.parse(raw);
-  } catch (e) {
-    events = [];
-  }
+  // 拿出所有记录
+  const all = await redis.hgetall('currencyReformEvents');
+  const events = Object.values(all).map(JSON.parse);
 
-  if (year) {
-    events = events.filter((e) => String(e.year) === String(year));
-  }
+  // 如果有指定 ?year，则过滤
+  const filtered = year
+    ? events.filter(e => String(e.year) === String(year))
+    : events;
 
-  return res.status(200).json(events);
+  res.status(200).json(filtered);
 }
