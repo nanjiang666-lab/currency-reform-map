@@ -17,6 +17,6 @@
   },
   "devDependencies": {
     "@swc/core": "^1.4.56",
-    "@swc/helpers": "^0.5.11"
+    "@swc/helpers": "^0.5.17"
   }
 }
