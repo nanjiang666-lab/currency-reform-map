@@ -5,16 +5,14 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "download-countries": "node scripts/download-countries.js"
+    "start": "next start"
   },
   "dependencies": {
-    "@vercel/blob": "latest",
-    "mapbox-gl": "latest",
-    "next": "latest",
-    "next-auth": "latest",
-    "node-fetch": "^3.0.0",
-    "react": "latest",
-    "react-dom": "latest"
+    "next": "^15.3.2",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "next-auth": "^4.25.0",
+    "mapbox-gl": "^2.15.0",
+    "@upstash/redis": "^2.0.0"
   }
 }
